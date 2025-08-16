@@ -12,20 +12,21 @@ if "buttons" not in st.session_state:
     ]
 
 if "events" not in st.session_state:
-    st.session_state.events = []  # list of dicts: opponent, game_date, timestamp_iso, label
+    st.session_state.events = []  # list of dicts: opponent, game_date, quarter, timestamp_iso, label
 
 def compute_counts():
     counts = {}
     for ev in st.session_state.events:
-        counts[ev["label"]] = counts.get(ev["label"], 0) + 1
+        key = (ev["label"], ev["quarter"])
+        counts[key] = counts.get(key, 0) + 1
     return counts
 
 # ---------- Sidebar: Game Meta & Admin ----------
 st.sidebar.header("Game Info")
 opponent = st.sidebar.text_input("Opponent", placeholder="e.g., Acadia", key="opponent")
 game_date = st.sidebar.date_input("Game Date", key="game_date")
-quarter = st.sidebar.text_input("Quarter", placeholder="e.g., Quarter 1,2,3,4", key="quarter")
-st.sidebar.caption("Opponent, Date and Quarter are required before you can tag.")
+quarter = st.sidebar.selectbox("Quarter", ["", "Q1", "Q2", "Q3", "Q4", "OT"], index=0, key="quarter")
+st.sidebar.caption("Opponent, Date, and Quarter are required before you can tag.")
 
 st.sidebar.header("Buttons")
 with st.sidebar.form("new_btn_form", clear_on_submit=True):
@@ -103,28 +104,32 @@ for row in rows:
         color = b.get("color", "#3f51b5")
         style = f"background-color:{color}; color:white; border:none; padding:14px; border-radius:8px; width:100%; font-weight:700;"
         if cols[i].button(label, key=f"btn_{label}"):
-            if not opponent or not game_date:
-                st.toast("Enter Opponent and Date first.", icon="⚠️")
+            if not opponent or not game_date or not quarter:
+                st.toast("Enter Opponent, Date, and Quarter first.", icon="⚠️")
             else:
                 ev = {
                     "opponent": opponent.strip(),
                     "game_date": str(game_date),
+                    "quarter": quarter,
                     "timestamp_iso": datetime.now().isoformat(timespec="seconds"),
                     "label": label,
                 }
                 st.session_state.events.append(ev)
-                st.toast(f"Tagged: {label}", icon="✅")
+                st.toast(f"Tagged: {label} ({quarter})", icon="✅")
 
 # ---------- Totals ----------
 st.subheader("Totals")
 counts = compute_counts()
 if counts:
-    df_counts = pd.DataFrame([{"Tag": k, "Total": v} for k, v in sorted(counts.items())])
+    df_counts = pd.DataFrame(
+        [{"Tag": k[0], "Quarter": k[1], "Total": v} for k, v in sorted(counts.items())]
+    )
     st.dataframe(df_counts, use_container_width=True, hide_index=True)
 
     # ---------- Analytics Visualization ----------
     st.subheader("Analytics Visualization")
-    st.bar_chart(df_counts.set_index("Tag")["Total"])
+    pivot = df_counts.pivot(index="Tag", columns="Quarter", values="Total").fillna(0)
+    st.bar_chart(pivot)
 else:
     st.write("No tags yet.")
 
